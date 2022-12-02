@@ -25,6 +25,7 @@ impl FromStr for Move {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            // in part 1, X/Y/Z are also moves
             "A" | "X" => Ok(Self::Rock),
             "B" | "Y" => Ok(Self::Paper),
             "C" | "Z" => Ok(Self::Scissors),
@@ -87,11 +88,37 @@ impl Move {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum Outcome {
     Win,
     Draw,
     Loss,
+}
+
+#[derive(Debug)]
+struct ParseOutcomeError {}
+
+impl Error for ParseOutcomeError {}
+
+const PARSE_OUTCOME_ERROR: &'static str = "invalid outcome key provided";
+
+impl Display for ParseOutcomeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", PARSE_OUTCOME_ERROR)
+    }
+}
+
+impl FromStr for Outcome {
+    type Err = ParseOutcomeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "X" => Ok(Self::Loss),
+            "Y" => Ok(Self::Draw),
+            "Z" => Ok(Self::Win),
+            _ => Err(ParseOutcomeError {}),
+        }
+    }
 }
 
 impl Outcome {
@@ -116,7 +143,29 @@ impl Round {
     }
 }
 
-fn parse(input: &str) -> Result<Vec<Round>, Box<dyn Error>> {
+#[derive(Debug)]
+struct Round2 {
+    them: Move,
+    desired_outcome: Outcome,
+}
+
+// could use a crate to generically iterate over an enum but this is quicker
+const MOVES: [Move; 3] = [Move::Rock, Move::Paper, Move::Scissors];
+
+impl Round2 {
+    pub fn our_move(&self) -> Move {
+        for m in MOVES {
+            if m.outcome_with(&self.them) == self.desired_outcome {
+                // dbg!(&self.them, &m, &self.desired_outcome);
+                return m;
+            }
+        }
+
+        panic!("unable to find desired move");
+    }
+}
+
+pub fn part_one(input: &str) -> Option<u32> {
     let mut rounds: Vec<Round> = vec![];
 
     for line in input.lines() {
@@ -128,12 +177,6 @@ fn parse(input: &str) -> Result<Vec<Round>, Box<dyn Error>> {
         });
     }
 
-    Ok(rounds)
-}
-
-pub fn part_one(input: &str) -> Option<u32> {
-    let rounds = parse(input).unwrap();
-
     let outcome: u32 = rounds
         .iter()
         .map(|round| round.us.score() as u32 + round.outcome().score())
@@ -143,7 +186,24 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    // change the parsing logic so the second key is actually the desired outcome
+    let mut rounds: Vec<Round2> = vec![];
+
+    for line in input.lines() {
+        let (them, desired_outcome) = line.split_once(' ').unwrap();
+
+        rounds.push(Round2 {
+            them: them.parse().unwrap(),
+            desired_outcome: desired_outcome.parse().unwrap(),
+        });
+    }
+
+    let score: u32 = rounds
+        .iter()
+        .map(|round| round.our_move().score() as u32 + round.desired_outcome.score())
+        .sum();
+
+    Some(score)
 }
 
 fn main() {
@@ -165,6 +225,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let input = advent_of_code::read_file("examples", 2);
-        assert_eq!(part_two(&input), None);
+        assert_eq!(part_two(&input), Some(12));
     }
 }
