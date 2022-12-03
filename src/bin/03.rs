@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 fn parse(input: &str) -> Vec<String> {
     let sacks: Vec<String> = input.lines().map(|s| s.to_string()).collect();
 
@@ -40,6 +42,9 @@ pub fn part_one(input: &str) -> Option<u32> {
         loop {
             let (x, y) = (xs[i] as u32, ys[j] as u32);
 
+            assert!(i < xs.len());
+            assert!(j < ys.len());
+
             if x < y {
                 i += 1;
             } else if x > y {
@@ -57,7 +62,40 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let score = parse(input)
+        .chunks(3)
+        .map(|bags| {
+            assert!(bags.len() == 3);
+
+            let mut map: HashMap<char, u32> = HashMap::new();
+            let mut badge: Option<char> = None;
+
+            'bag: for bag in bags {
+                let mut set = HashSet::new();
+
+                for ch in bag.chars() {
+                    if set.contains(&ch) {
+                        continue;
+                    }
+
+                    set.insert(ch);
+
+                    let score = map.entry(ch).and_modify(|e| *e += 1).or_insert(1);
+
+                    if *score == 3 {
+                        badge = Some(ch);
+                        break 'bag;
+                    }
+                }
+            }
+
+            assert!(badge.is_some());
+
+            priority(badge.unwrap()) as u32
+        })
+        .sum();
+
+    Some(score)
 }
 
 fn main() {
@@ -79,6 +117,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let input = advent_of_code::read_file("examples", 3);
-        assert_eq!(part_two(&input), None);
+        assert_eq!(part_two(&input), Some(70));
     }
 }
