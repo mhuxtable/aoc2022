@@ -25,7 +25,23 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let overlaps = input
+        .lines()
+        .filter_map(|pair| {
+            let (elf1, elf2) = pair.split_once(',').unwrap();
+
+            let (e1f, e1t) = elf_range(elf1);
+            let (e2f, e2t) = elf_range(elf2);
+
+            if (e1f <= e2f && e1t >= e2f) || (e2f <= e1f && e2t >= e1f) {
+                Some(())
+            } else {
+                None
+            }
+        })
+        .count();
+
+    Some(overlaps as u32)
 }
 
 fn main() {
