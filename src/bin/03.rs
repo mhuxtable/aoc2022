@@ -1,3 +1,6 @@
+/// This one was good fun and some reasonable assumptions can be made based on an even number of
+/// items per bag. Just need to watch out for exclusive top slice indices which caught me out
+/// briefly and wasn't caught in the example input.
 use std::collections::{HashMap, HashSet};
 
 fn parse(input: &str) -> Vec<String> {

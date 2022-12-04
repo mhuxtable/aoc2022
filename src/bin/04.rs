@@ -1,3 +1,7 @@
+/// Really simple one today. I thought weekends were meant to be harder?! I started writing a
+/// proper Range data type with parsing logic but it's just as simple to write it like this. My
+/// part two overlap logic can be simpler.
+
 fn elf_range(range: &str) -> (u32, u32) {
     let (from, to) = range.split_once('-').unwrap();
 

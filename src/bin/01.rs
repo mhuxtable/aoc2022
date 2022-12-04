@@ -1,3 +1,6 @@
+/// Nice easy one to start off, summing some groups and chunking where needed. Nothing really to
+/// report.
+
 fn parse(input: &str) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
     let mut elves: Vec<Vec<u32>> = vec![vec![]];
 

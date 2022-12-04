@@ -1,3 +1,7 @@
+/// This one was good fun and not conceptually hard, although the separate logic for X/Y/Z between
+/// part one and two was a nice surprise. Doing it "properly" in Rust meant the solution looks more
+/// verbose than it likely could be, but I'm not golfing this and more interested in writing
+/// idiomatic code, so I'm fine with it.
 use std::{error::Error, fmt::Display, str::FromStr};
 
 #[derive(Debug, PartialEq)]
