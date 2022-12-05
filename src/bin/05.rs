@@ -95,15 +95,15 @@ pub fn part_two(input: &str) -> Option<String> {
     // nice, we can make a FIFO out of two stacks
 
     for mv in moves {
-        let mut tmp = VecDeque::new();
+        let mut tmp = vec![];
 
         for _ in 0..mv.quantity {
             let crate_id = stacks[mv.from - 1].pop_front().unwrap();
-            tmp.push_front(crate_id);
+            tmp.push(crate_id);
         }
 
         while !tmp.is_empty() {
-            let item = tmp.pop_front().unwrap();
+            let item = tmp.pop().unwrap();
             stacks[mv.to - 1].push_front(item);
         }
     }
