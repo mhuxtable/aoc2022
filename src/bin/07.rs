@@ -18,15 +18,13 @@ fn parse(input: &str) -> HashMap<String, usize> {
         match parts[0] {
             // This is a command input
             "$" => {
-                let cmd: Vec<&str> = line.trim_start_matches("$ ").splitn(2, ' ').collect();
+                assert!(parts.len() >= 2);
 
-                assert!(cmd.len() >= 1);
-
-                match cmd[0] {
+                match parts[1] {
                     "cd" => {
-                        assert!(cmd.len() == 2);
+                        assert!(parts.len() == 3);
 
-                        match cmd[1] {
+                        match parts[2] {
                             ".." => _ = current_path.pop(),
                             x => {
                                 current_path.push(x);
@@ -34,7 +32,8 @@ fn parse(input: &str) -> HashMap<String, usize> {
                         }
                     }
                     "ls" => {
-                        assert!(cmd.len() == 1);
+                        assert!(parts.len() == 2);
+
                         _ = tree
                             .entry(current_path.to_str().unwrap().to_string())
                             .or_insert(0);
