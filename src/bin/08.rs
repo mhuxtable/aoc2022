@@ -1,3 +1,7 @@
+use itertools::{
+    FoldWhile::{Continue, Done},
+    Itertools,
+};
 use std::borrow::Borrow;
 
 fn parse(input: &str) -> Vec<Vec<u32>> {
@@ -59,18 +63,21 @@ pub fn part_two(input: &str) -> Option<u32> {
         I: IntoIterator,
         I::Item: Borrow<u32>,
     {
-        let (vis, _) = heights.into_iter().fold((0, true), |(trees, cont), tree| {
-            (
+        heights
+            .into_iter()
+            .fold_while(0, |trees, tree| {
                 // We always count the last tree that terminates the search, even if it is of same
                 // or higher height, then we terminate. This is slightly confusing in the puzzle
                 // description. Use cont from the invocation of the fold.
-                trees + if cont { 1 } else { 0 },
-                // And determine whether to continue.
-                cont && *tree.borrow() < current_tree,
-            )
-        });
+                let result = trees + 1;
 
-        vis
+                if *tree.borrow() < current_tree {
+                    Continue(result)
+                } else {
+                    Done(result)
+                }
+            })
+            .into_inner()
     }
 
     for (i, row) in trees.iter().enumerate() {
