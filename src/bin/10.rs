@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, error::Error, fmt::Display, str::FromStr};
+use std::{error::Error, fmt::Display, str::FromStr};
 
 #[derive(Clone, Debug)]
 enum Instruction {
@@ -56,10 +56,6 @@ impl Instruction {
             Self::Addx(_) => 2,
         }
     }
-}
-
-fn parse(input: &str) -> Result<Vec<Instruction>, ParseInstructionError> {
-    input.lines().map(|l| l.parse()).collect()
 }
 
 const CRT_SIZE: usize = 240;
@@ -142,6 +138,12 @@ impl<I: IntoIterator<Item = Instruction>> CPU<I> {
 
         display
     }
+}
+
+// cheating a bit by decoding all instructions ahead of time rather than as a decode stage within
+// the CPU. Fine for this :-)
+fn parse(input: &str) -> Result<Vec<Instruction>, ParseInstructionError> {
+    input.lines().map(|l| l.parse()).collect()
 }
 
 const MAX_SCORE_CYCLE: usize = 220;
