@@ -1,5 +1,18 @@
+// This exercise took me too long to solve and I needed to compare with @Humpheh's solution to
+// figure out where it was going wrong. The issue was something to do with the logic for resolving
+// the diagonal resolution; I think I was too overzealous in moving knots. This new solution is
+// better and avoids a nested loop to make the knots follow.
+//
+// I'm still not super impressed with the length of the solution, but it does print pretty pictures
+// to show the movement of the rope (windowed on the head) as it runs, reminding me of Conway's
+// Game of Life that I implemented in a past University life :-)
+//
+// I was taken aback by the exercise description when first opening it, and found it challenging to
+// decipher the story description, but I realise implementing it that's it's just an adaptation of
+// Snake from my first Nokia!
+
 mod day08 {
-    use std::{fmt::Display, str::FromStr};
+    use std::{fmt::Display, ops::Add, str::FromStr};
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Direction {
@@ -87,7 +100,7 @@ mod day08 {
         }
     }
 
-    #[derive(Clone, Copy, Debug, PartialEq)]
+    #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
     pub struct Point {
         pub x: isize,
         pub y: isize,
@@ -100,21 +113,13 @@ mod day08 {
     }
 
     impl Point {
-        pub fn adjacent_points(&self, grid_size: usize) -> Vec<Point> {
+        pub fn adjacent_points(&self) -> Vec<Point> {
             let mut adjacencies = vec![];
 
             for x in -1..=1 {
                 for y in -1..=1 {
                     let ax = self.x + x;
                     let ay = self.y + y;
-
-                    if ax < 0
-                        || ay < 0
-                        || ax as usize > grid_size - 1
-                        || ay as usize > grid_size - 1
-                    {
-                        continue;
-                    }
 
                     adjacencies.push(Point { x: ax, y: ay });
                 }
@@ -123,181 +128,129 @@ mod day08 {
             adjacencies
         }
     }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn point_eq() {
-            assert!(Point { x: 1, y: 1 } == Point { x: 1, y: 1 });
-        }
-    }
 }
+
+use std::collections::{HashSet, VecDeque};
 
 use day08::Point;
 
-#[derive(Debug)]
-struct ApplyMoveError;
-
 struct Grid {
-    // grid is a square represented in a 1-D array. I guess that means I need to write the boundary
-    // logic
-    tail_visits: Vec<bool>,
-    grid_size: usize,
-    head: Point,
-    tail: Point,
+    tail_visits: HashSet<Point>,
+    rope: Rope,
+}
+
+struct Rope {
+    knots: VecDeque<Point>,
+}
+
+impl Rope {
+    pub fn new(start: &Point, knots: usize) -> Rope {
+        Rope {
+            knots: (0..knots).map(|_| start.clone()).collect(),
+        }
+    }
+
+    pub fn head(&self) -> &Point {
+        self.knots.front().unwrap()
+    }
+
+    pub fn tail(&self) -> &Point {
+        self.knots.back().unwrap()
+    }
+
+    pub fn move_head(&mut self, dir: day08::Direction) {
+        let mut new_rope = VecDeque::new();
+
+        let mut head = self.knots.pop_front().unwrap();
+
+        match dir {
+            day08::Direction::Up => head.y -= 1,
+            day08::Direction::Down => head.y += 1,
+            day08::Direction::Left => head.x -= 1,
+            day08::Direction::Right => head.x += 1,
+        }
+
+        new_rope.push_front(head);
+
+        for mut knot in self.knots.iter_mut() {
+            let last_knot = new_rope.back().unwrap();
+            let (dx, dy) = (last_knot.x - knot.x, last_knot.y - knot.y);
+
+            // play catch up with the rest of the rope
+            if dx.abs() <= 1 && dy.abs() <= 1 {
+                // do nothing
+            } else if dx == 0 {
+                knot.y = knot.y + dy.signum();
+            } else if dy == 0 {
+                knot.x = knot.x + dx.signum();
+            } else {
+                // diagonal
+                knot.x = knot.x + dx.signum();
+                knot.y = knot.y + dy.signum();
+            }
+
+            new_rope.push_back(*knot);
+        }
+
+        self.knots = new_rope;
+    }
+
+    pub fn has_knot(&self, p: &Point) -> Option<usize> {
+        self.knots
+            .iter()
+            .enumerate()
+            .find(|(_, &knot)| knot == *p)
+            .map(|(i, _)| i)
+    }
 }
 
 impl Grid {
-    pub fn new(size: usize) -> Grid {
-        assert!(size > 0);
-
+    pub fn new(knots: usize) -> Grid {
         // head and tail start in the middle
-        let start = Point {
-            x: size as isize / 2,
-            y: size as isize / 2,
-        };
+        let start = Point { x: 0, y: 0 };
 
-        let mut grid = Grid {
-            tail_visits: vec![false; size.pow(2)],
-            grid_size: size,
-            head: start,
-            tail: start,
-        };
+        let mut tail_visits = HashSet::new();
+        tail_visits.insert(start);
 
-        // first point is visited
-        *grid.visit_of_point_mut(start) = true;
-
-        grid
+        Grid {
+            tail_visits,
+            rope: Rope::new(&start, knots),
+        }
     }
 
-    fn visit_of_point_mut(&mut self, point: impl AsRef<Point>) -> &mut bool {
-        let point = point.as_ref();
-        let offset = point.y * self.grid_size as isize + point.x;
-
-        &mut self.tail_visits[offset as usize]
+    fn move_knots(&mut self, dir: day08::Direction) {
+        self.rope.move_head(dir);
+        self.tail_visits.insert(*self.rope.tail());
     }
 
-    fn is_out_of_bounds(&self, point: impl AsRef<Point>) -> bool {
-        let point = point.as_ref();
-
-        point.x < 0
-            || point.x >= self.grid_size as isize
-            || point.y < 0
-            || point.y >= self.grid_size as isize
-    }
-
-    fn move_knots(&mut self, dir: day08::Direction) -> Result<(), ApplyMoveError> {
-        match dir {
-            day08::Direction::Up => self.head.y -= 1,
-            day08::Direction::Down => self.head.y += 1,
-            day08::Direction::Left => self.head.x -= 1,
-            day08::Direction::Right => self.head.x += 1,
+    pub fn apply_move(&mut self, m: &day08::Move) {
+        for _ in 0..m.steps {
+            self.move_knots(m.dir);
         }
-
-        if self.is_out_of_bounds(self.head) {
-            return Err(ApplyMoveError {});
-        }
-
-        loop {
-            // println!("tail resolver\n{}\n", self.display_around(&self.tail));
-
-            // play catch up with the tail
-            if self
-                .head
-                .adjacent_points(self.grid_size)
-                .contains(&self.tail)
-            {
-                break;
-            }
-
-            if self.head.x == self.tail.x && self.head.y != self.tail.y {
-                // move tail in direction of head
-                if self.head.y < self.tail.y {
-                    self.tail.y -= 1;
-                } else {
-                    self.tail.y += 1;
-                }
-            } else if self.head.x != self.tail.x && self.head.y == self.tail.y {
-                if self.head.x < self.tail.x {
-                    self.tail.x -= 1;
-                } else {
-                    self.tail.x += 1;
-                }
-            } else {
-                // diagonal move, which we'll implement by moving in the axis that has a difference
-                // with head axis coord of at least 2, then let the next loop iteration move
-                // horizontally or vertically. Note that the tail would be considered adjacent if
-                // we moved just by one step, but it wouldn't be a diagonal move and we'll possibly
-                // miscount due to repeated visits.
-                //
-                // e.g. in the below (incorrect) example:
-                //
-                // .....    .....    .....
-                // .....    .....    .....
-                // ..H.. -> ...H. -> ..TH.
-                // .T...    .T...    .....
-                // .....    .....    .....
-                //
-                // if in step 2 of 3 we move the tail one step to the right, we'll consider it to
-                // be adjacent to the head and terminate the loop, but this will count the wrong
-                // location visited by the tail, which may lead to inaccurate reporting as the
-                // exercise input most likely exercises this possible error condition by visiting
-                // some places that result from a diagonal move multiple times.
-                if self.head.x.abs_diff(self.tail.x) >= 2 {
-                    self.tail.y = self.head.y;
-                } else if self.head.y.abs_diff(self.tail.y) >= 2 {
-                    self.tail.x = self.head.x;
-                } else {
-                    panic!("tail is too far from head to know how to resolve");
-                }
-            }
-        }
-
-        *self.visit_of_point_mut(self.tail) = true;
-
-        Ok(())
-    }
-
-    pub fn apply_move(&mut self, m: &day08::Move) -> Result<(), ApplyMoveError> {
-        for i in 0..m.steps {
-            self.move_knots(m.dir)?;
-            // println!("apply move {}\n{}\n", i, self.display_around(&self.head));
-        }
-
-        Ok(())
     }
 
     pub fn total_tail_visits(&self) -> usize {
-        self.tail_visits.iter().filter(|&v| *v).count()
+        self.tail_visits.len()
     }
 
     pub fn display_around(&self, p: &Point) -> String {
         let mut out = String::new();
 
-        const WINDOW_SIZE: isize = 4;
+        let window_size = 20.max(self.rope.knots.len() as isize);
 
-        for y in p.y - WINDOW_SIZE..=p.y + WINDOW_SIZE {
-            let mut overlap = false;
-
-            for x in p.x - WINDOW_SIZE..=p.x + WINDOW_SIZE {
-                if self.head == self.tail && self.head.x == x && self.head.y == y {
-                    out.push('*');
-                    overlap = true;
-                } else if self.head.x == x && self.head.y == y {
+        for y in p.y - window_size..=p.y + window_size {
+            for x in p.x - window_size..=p.x + window_size {
+                if self.rope.head().x == x && self.rope.head().y == y {
                     out.push('H');
-                } else if self.tail.x == x && self.tail.y == y {
+                } else if self.rope.tail().x == x && self.rope.tail().y == y {
                     out.push('T');
-                } else if self.tail_visits[(y * self.grid_size as isize + x) as usize] {
+                } else if let Some(pos) = self.rope.has_knot(&Point { x, y }) {
+                    out.push_str(format!("{}", pos).as_str())
+                } else if self.tail_visits.contains(&Point { x, y }) {
                     out.push('#');
                 } else {
                     out.push('.');
                 }
-            }
-
-            if overlap {
-                out.push_str(" (*) = head and tail overlap")
             }
 
             out.push('\n');
@@ -321,21 +274,44 @@ fn parse_input(input: &str) -> Vec<day08::Move> {
     moves
 }
 
+static PRINT_STEPS: bool = true;
+
 pub fn part_one(input: &str) -> Option<u32> {
     let moves = parse_input(input);
-    let mut grid = Grid::new(1000);
+    let mut grid = Grid::new(2);
 
     for m in moves {
-        grid.apply_move(&m).expect("applying move");
+        grid.apply_move(&m);
 
-        println!("=======\n{}\n\n{}\n", &m, grid.display_around(&grid.head));
+        if PRINT_STEPS {
+            println!(
+                "=======\n{}\n\n{}\n",
+                &m,
+                grid.display_around(&grid.rope.head())
+            );
+        }
     }
 
-    Some(grid.tail_visits.iter().filter(|&v| *v).count() as u32)
+    Some(grid.total_tail_visits() as u32)
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let moves = parse_input(input);
+    let mut grid = Grid::new(10);
+
+    for m in moves {
+        grid.apply_move(&m);
+
+        if PRINT_STEPS {
+            println!(
+                "=======\n{}\n\n{}\n",
+                &m,
+                grid.display_around(&grid.rope.head())
+            );
+        }
+    }
+
+    Some(grid.total_tail_visits() as u32)
 }
 
 fn main() {
@@ -351,12 +327,12 @@ mod tests {
     #[test]
     fn test_part_one() {
         let input = advent_of_code::read_file("examples", 9);
-        assert_eq!(part_one(&input), Some(13));
+        assert_eq!(part_one(&input), Some(88));
     }
 
     #[test]
     fn test_part_two() {
         let input = advent_of_code::read_file("examples", 9);
-        assert_eq!(part_two(&input), None);
+        assert_eq!(part_two(&input), Some(36));
     }
 }
