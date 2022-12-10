@@ -11,8 +11,8 @@
 // decipher the story description, but I realise implementing it that's it's just an adaptation of
 // Snake from my first Nokia!
 
-mod day08 {
-    use std::{fmt::Display, ops::Add, str::FromStr};
+mod day09 {
+    use std::{fmt::Display, str::FromStr};
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Direction {
@@ -111,28 +111,11 @@ mod day08 {
             &self
         }
     }
-
-    impl Point {
-        pub fn adjacent_points(&self) -> Vec<Point> {
-            let mut adjacencies = vec![];
-
-            for x in -1..=1 {
-                for y in -1..=1 {
-                    let ax = self.x + x;
-                    let ay = self.y + y;
-
-                    adjacencies.push(Point { x: ax, y: ay });
-                }
-            }
-
-            adjacencies
-        }
-    }
 }
 
 use std::collections::{HashSet, VecDeque};
 
-use day08::Point;
+use day09::{Direction, Move, Point};
 
 struct Grid {
     tail_visits: HashSet<Point>,
@@ -158,16 +141,16 @@ impl Rope {
         self.knots.back().unwrap()
     }
 
-    pub fn move_head(&mut self, dir: day08::Direction) {
+    pub fn move_head(&mut self, dir: Direction) {
         let mut new_rope = VecDeque::new();
 
         let mut head = self.knots.pop_front().unwrap();
 
         match dir {
-            day08::Direction::Up => head.y -= 1,
-            day08::Direction::Down => head.y += 1,
-            day08::Direction::Left => head.x -= 1,
-            day08::Direction::Right => head.x += 1,
+            Direction::Up => head.y -= 1,
+            Direction::Down => head.y += 1,
+            Direction::Left => head.x -= 1,
+            Direction::Right => head.x += 1,
         }
 
         new_rope.push_front(head);
@@ -206,7 +189,6 @@ impl Rope {
 
 impl Grid {
     pub fn new(knots: usize) -> Grid {
-        // head and tail start in the middle
         let start = Point { x: 0, y: 0 };
 
         let mut tail_visits = HashSet::new();
@@ -218,15 +200,13 @@ impl Grid {
         }
     }
 
-    fn move_knots(&mut self, dir: day08::Direction) {
+    fn move_knots(&mut self, dir: Direction) {
         self.rope.move_head(dir);
         self.tail_visits.insert(*self.rope.tail());
     }
 
-    pub fn apply_move(&mut self, m: &day08::Move) {
-        for _ in 0..m.steps {
-            self.move_knots(m.dir);
-        }
+    pub fn apply_move(&mut self, m: &Move) {
+        (0..m.steps).for_each(|_| self.move_knots(m.dir));
     }
 
     pub fn total_tail_visits(&self) -> usize {
@@ -239,9 +219,11 @@ impl Grid {
         let window_size = 20.max(self.rope.knots.len() as isize);
 
         for y in p.y - window_size..=p.y + window_size {
+            out.push('\n');
+
             for x in p.x - window_size..=p.x + window_size {
-                if let Some(pos) = self.rope.has_knot(&Point { x, y }) {
-                    out.push_str(
+                out.push_str(
+                    if let Some(pos) = self.rope.has_knot(&Point { x, y }) {
                         if pos == self.rope.knots.len() - 1 {
                             "T".to_string()
                         } else if pos == 0 {
@@ -249,34 +231,34 @@ impl Grid {
                         } else {
                             format!("{}", pos)
                         }
-                        .as_str(),
-                    )
-                } else if self.tail_visits.contains(&Point { x, y }) {
-                    out.push('#');
-                } else {
-                    out.push('.');
-                }
+                    } else if self.tail_visits.contains(&Point { x, y }) {
+                        "#".to_string()
+                    } else {
+                        ".".to_string()
+                    }
+                    .as_str(),
+                )
             }
-
-            out.push('\n');
         }
 
-        out.pop();
-        out.push_str(format!(" tail visits: {}", self.total_tail_visits()).as_str());
-        out.push('\n');
+        out.push_str(format!(" tail visits: {}\n", self.total_tail_visits()).as_str());
 
         out
     }
 }
 
-fn parse_input(input: &str) -> Vec<day08::Move> {
-    let mut moves = vec![];
+fn parse_input(input: &str) -> Vec<Move> {
+    input.lines().map(|line| line.parse().unwrap()).collect()
+}
 
-    for line in input.lines() {
-        moves.push(line.parse().unwrap());
+fn print_step(m: &Move, grid: &Grid) {
+    if PRINT_STEPS {
+        println!(
+            "=======\n{}\n\n{}\n",
+            &m,
+            grid.display_around(&grid.rope.head())
+        );
     }
-
-    moves
 }
 
 static PRINT_STEPS: bool = true;
@@ -287,14 +269,7 @@ pub fn part_one(input: &str) -> Option<u32> {
 
     for m in moves {
         grid.apply_move(&m);
-
-        if PRINT_STEPS {
-            println!(
-                "=======\n{}\n\n{}\n",
-                &m,
-                grid.display_around(&grid.rope.head())
-            );
-        }
+        print_step(&m, &grid);
     }
 
     Some(grid.total_tail_visits() as u32)
@@ -306,14 +281,7 @@ pub fn part_two(input: &str) -> Option<u32> {
 
     for m in moves {
         grid.apply_move(&m);
-
-        if PRINT_STEPS {
-            println!(
-                "=======\n{}\n\n{}\n",
-                &m,
-                grid.display_around(&grid.rope.head())
-            );
-        }
+        print_step(&m, &grid);
     }
 
     Some(grid.total_tail_visits() as u32)
