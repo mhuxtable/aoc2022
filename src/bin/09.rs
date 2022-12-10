@@ -240,12 +240,17 @@ impl Grid {
 
         for y in p.y - window_size..=p.y + window_size {
             for x in p.x - window_size..=p.x + window_size {
-                if self.rope.head().x == x && self.rope.head().y == y {
-                    out.push('H');
-                } else if self.rope.tail().x == x && self.rope.tail().y == y {
-                    out.push('T');
-                } else if let Some(pos) = self.rope.has_knot(&Point { x, y }) {
-                    out.push_str(format!("{}", pos).as_str())
+                if let Some(pos) = self.rope.has_knot(&Point { x, y }) {
+                    out.push_str(
+                        if pos == self.rope.knots.len() - 1 {
+                            "T".to_string()
+                        } else if pos == 0 {
+                            "H".to_string()
+                        } else {
+                            format!("{}", pos)
+                        }
+                        .as_str(),
+                    )
                 } else if self.tail_visits.contains(&Point { x, y }) {
                     out.push('#');
                 } else {
