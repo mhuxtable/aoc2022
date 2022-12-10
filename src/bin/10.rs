@@ -1,3 +1,16 @@
+// This is a really nice exercise, although it has gotchas in terms of off-by-one errors all over
+// the place (e.g. cycle count starts ticking at 1, but signal strength in part 1 is computed
+// before the tick is over, while pixels start counting at 0).
+//
+// This is more verbose than perhaps it could be due to (1) use of the std::str::FromStr trait to
+// implement parsing, which depends on defining the FromStr::Err type and corresponding
+// std::error::Error trait implementation on the defined error type and (2) additional defence in
+// depth in each part to check various assertions that can be assumed to pass for the typical AoC
+// puzzle inputs.
+//
+// It's also interesting that vertical position is not tracked on the CRT. That gives momentary
+// pause to determine what the various computations to make for drawing the pixel will be.
+
 use std::{error::Error, fmt::Display, str::FromStr};
 
 #[derive(Clone, Debug)]
