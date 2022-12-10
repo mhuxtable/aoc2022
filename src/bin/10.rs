@@ -65,7 +65,6 @@ fn parse(input: &str) -> Result<Vec<Instruction>, ParseInstructionError> {
 const CRT_SIZE: usize = 240;
 const CRT_ROWS: usize = 6;
 const CRT_WIDTH: usize = CRT_SIZE / CRT_ROWS;
-const SPRITE_WIDTH: usize = 3;
 
 struct CPU<I: IntoIterator> {
     instrs: I::IntoIter,
@@ -88,9 +87,8 @@ impl<I: IntoIterator<Item = Instruction>> CPU<I> {
         }
     }
 
-    pub fn tick(&mut self) -> bool {
-        self.cycle += 1;
-
+    // returns whether there are any more instructions, the cycle count and the previous value of register X
+    pub fn tick(&mut self) -> (bool, usize, isize) {
         if self.remaining_ticks == 0 {
             self.current_instruction = self.instrs.next().and_then(|i| {
                 self.remaining_ticks = i.ticks();
@@ -99,18 +97,22 @@ impl<I: IntoIterator<Item = Instruction>> CPU<I> {
         }
 
         if self.current_instruction.is_none() {
-            return false;
+            // cycle doesn't tick after we run out of instructions? Maybe it should
+            return (false, self.cycle, self.reg_x);
         }
 
-        // Pixels are numbered 0 to 39, etc. but cycle will be 1 to 40 for the first row.
-        let current_pixel = ((self.cycle - 1) % CRT_WIDTH) as isize;
-        // The sprite is SPRITE_WIDTH wide, which means it protrudes (SPRITE_WIDTH-1)/2 to the left
-        // and right relative to the value of the register that determines its middle.
-        let visible = (self.reg_x - (SPRITE_WIDTH as isize - 1) / 2) <= current_pixel
-            && (self.reg_x + (SPRITE_WIDTH as isize - 1) / 2) >= current_pixel;
-        // The inputs don't seem to wrap the CPU state beyond cycle CRT_SIZE, but in principle they
-        // could wrap and require us to overwrite previous output frame state.
-        self.crt[(self.cycle - 1) % CRT_SIZE] = visible;
+        // Pixels are numbered 0 to 39, etc.
+        let current_pixel = (self.cycle % CRT_WIDTH) as isize;
+
+        // The sprite is 3 pixels wide, which means it protrudes 1 pixel to the left and 1 pixel to
+        // the right relative to the value of register X (which determines the middle pixel).
+        let visible = (self.reg_x - 1) <= current_pixel && (self.reg_x + 1) >= current_pixel;
+
+        // The inputs don't seem to provide more instructions than CRT_SIZE, so we don't have to
+        // wrap and overwrite previous video output state, but in principle they could wrap.
+        self.crt[self.cycle % CRT_SIZE] = visible;
+
+        let x = self.reg_x;
 
         let i = self.current_instruction.as_ref().unwrap();
         match i {
@@ -122,16 +124,9 @@ impl<I: IntoIterator<Item = Instruction>> CPU<I> {
             }
         }
 
+        self.cycle += 1;
         self.remaining_ticks -= 1;
-        return true;
-    }
-
-    pub fn get_cycle(&self) -> usize {
-        self.cycle
-    }
-
-    pub fn get_x(&self) -> isize {
-        self.reg_x
+        return (true, self.cycle, x);
     }
 
     pub fn get_crt(&self) -> String {
@@ -149,26 +144,32 @@ impl<I: IntoIterator<Item = Instruction>> CPU<I> {
     }
 }
 
+const MAX_SCORE_CYCLE: usize = 220;
+
 pub fn part_one(input: &str) -> Option<i32> {
     let instructions = parse(input).expect("error parsing input");
     let mut cpu = CPU::new(instructions);
     let mut score = 0;
 
     loop {
-        // Cycles start at 1, the CPU will only update cycle after the first tick, but signal
-        // strength is computed from before the tick applies to the state.
-        let cycle = cpu.get_cycle() + 1;
+        let (more, cycle, x) = cpu.tick();
 
+        // Cycles start counting at 1 for purposes of signal strength. The signal strength is
+        // computed using the X value at the start of the cycle.
         if cycle % 40 == 20 {
-            score += cpu.get_x() as i32 * cycle as i32;
+            score += x as i32 * cycle as i32;
+        } else if cycle > MAX_SCORE_CYCLE {
+            // Don't want to process any instructions beyond cycle 220 as we are not asked for
+            // scores beyond that cycle, despite the input not seeming to provide them.
+            break;
         }
 
-        if !cpu.tick() {
-            if cycle < 220 {
+        if !more {
+            if cycle < MAX_SCORE_CYCLE {
                 panic!("ran out of instructions!");
-            } else {
-                break;
             }
+
+            break;
         }
     }
 
@@ -178,7 +179,10 @@ pub fn part_one(input: &str) -> Option<i32> {
 pub fn part_two(input: &str) -> Option<String> {
     let instructions = parse(input).expect("error parsing input");
     let mut cpu = CPU::new(instructions);
-    while cpu.tick() {}
+    let mut more = true;
+    while more {
+        (more, _, _) = cpu.tick();
+    }
     let crt = cpu.get_crt();
     // println!("{}", crt);
 
