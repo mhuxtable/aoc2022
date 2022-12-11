@@ -1,3 +1,25 @@
+// This was a long exercise to write the parsing logic for (albeit the parsing was much simpler
+// than the crane exercise a few days ago!).
+//
+// It also has a nasty twist in overflowing the u64 in part 2. This isn't readily resolvable using
+// a big integer type (a common approach but the size of the numbers blow up far too quickly for
+// this to be practicable:
+// https://www.reddit.com/r/adventofcode/comments/zioepr/2022_day_11_part_2_ridiculous_worry_levels/).
+// I didn't go anywhere near big-ints because it was clear the size of the numbers blew up very
+// quickly in the initial experiment, and the puzzle description implied we needed something
+// smarter than just smashing a u64 in and hoping for the best.
+//
+// The solution is some number theory to perform the operations in modular arithmetic, modulo the
+// lowest common multiple of the divisors used in each monkey's test. We need only to preserve the
+// divisibility of the numbers that result with respect to the various tests used by the monkeys;
+// we don't care about the actual numbers themselves! In this case, the test divisors are all
+// prime, so their lowest common multiple is simply their product. Thus, for some item with worry
+// level A, its score is divisible by its test T if, and only if, A - kT is. If we choose k to be
+// the lowest common multiple of all monkey test values, k will always be divisible by the test.
+//
+// I went for this on a hunch to begin with, based on intuition, and came back to figure the theory
+// out once it worked :-)
+
 use itertools::Itertools;
 use std::{
     cell::RefCell,
@@ -226,7 +248,8 @@ where
 pub fn part_one(input: &str) -> Option<u32> {
     let monkeys = parse(input);
     let inspected = play_game(monkeys, 20, |x| {
-        // division is not in general defined in mod arithmetic. Just hack it
+        // division is not in general defined in mod arithmetic. Just hack it because we know that
+        // we won't overflow the u32 in part 1 with the division by 3
         Modular {
             remainder: x.remainder / 3,
             divisor: x.divisor,
@@ -238,6 +261,7 @@ pub fn part_one(input: &str) -> Option<u32> {
 pub fn part_two(input: &str) -> Option<u64> {
     let monkeys = parse(input);
     let inspected = play_game(monkeys, 10_000, |x| x);
+    // Yes, even the inspection counts overflow a u32 when multiplied!
     Some(inspected[0] as u64 * inspected[1] as u64)
 }
 
