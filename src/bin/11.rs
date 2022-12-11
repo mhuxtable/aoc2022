@@ -19,6 +19,9 @@
 //
 // I went for this on a hunch to begin with, based on intuition, and came back to figure the theory
 // out once it worked :-)
+//
+// In terms of Rust theory, there's a nice use of interior mutability in this exercise too, so I
+// can throw items to other monkeys while holding a reference to a vector of monkeys.
 
 use itertools::Itertools;
 use std::{
