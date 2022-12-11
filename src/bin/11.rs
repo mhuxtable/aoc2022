@@ -26,7 +26,7 @@
 use itertools::Itertools;
 use std::{
     cell::RefCell,
-    ops::{Add, Div, Mul},
+    ops::{Add, Mul},
 };
 
 #[derive(Debug)]
