@@ -1,32 +1,95 @@
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-};
-
 use itertools::Itertools;
+use std::{
+    cell::RefCell,
+    ops::{Add, Div, Mul},
+};
 
 #[derive(Debug)]
 struct Monkey {
-    items: RefCell<Vec<u64>>,
-    test: u64,
+    items: RefCell<Vec<Modular>>,
+    test: u32,
     op: Operation,
     if_true: u32,
     if_false: u32,
 }
 
-type Operator = fn(u64, u64) -> u64;
+type Operator = fn(Modular, Modular) -> Modular;
 
-static MUL: Operator = |l: u64, r: u64| l * r;
-static ADD: Operator = |l: u64, r: u64| l + r;
+#[derive(Clone, Copy, Debug)]
+struct Modular {
+    remainder: u32,
+    divisor: u32,
+}
+
+impl Modular {
+    fn new(mut remainder: u32, divisor: u32) -> Modular {
+        if remainder > divisor {
+            remainder = remainder % divisor;
+        }
+
+        Modular { remainder, divisor }
+    }
+
+    fn get_remainder(&self) -> u32 {
+        self.remainder
+    }
+}
+
+trait IntoModular {
+    fn to_modular(self, divisor: u32) -> Modular;
+}
+
+impl IntoModular for u32 {
+    fn to_modular(self, divisor: u32) -> Modular {
+        Modular::new(self, divisor)
+    }
+}
+
+impl Add for Modular {
+    type Output = Modular;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        assert_eq!(
+            self.divisor, rhs.divisor,
+            "cannot add modular numbers of different divisors"
+        );
+
+        Modular {
+            remainder: ((self.remainder as u64 + rhs.remainder as u64) % (self.divisor as u64))
+                as u32,
+            divisor: self.divisor,
+        }
+    }
+}
+
+impl Mul for Modular {
+    type Output = Modular;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        assert_eq!(
+            self.divisor, rhs.divisor,
+            "cannot multiply modular numbers of different divisors"
+        );
+
+        Modular {
+            remainder: ((self.remainder as u64 * rhs.remainder as u64) % (self.divisor as u64))
+                as u32,
+            divisor: self.divisor,
+        }
+    }
+}
+
+static MUL: Operator = |l: Modular, r: Modular| l * r;
+static ADD: Operator = |l: Modular, r: Modular| l + r;
 
 #[derive(Debug)]
 enum RHS {
     Old,
-    Literal(u64),
+    Literal(Modular),
 }
 
 impl RHS {
-    pub fn get(&self, old: u64) -> u64 {
+    pub fn get(&self, old: Modular) -> Modular {
         match self {
             Self::Old => old,
             Self::Literal(x) => *x,
@@ -41,12 +104,12 @@ struct Operation {
 }
 
 impl Operation {
-    pub fn compute(&self, old: u64) -> u64 {
+    pub fn compute(&self, old: Modular) -> Modular {
         (self.op)(old, self.rhs.get(old))
     }
 }
 
-fn parse_op(s: &str) -> Operation {
+fn parse_op(s: &str, test_divisor: u32) -> Operation {
     let mut tokens = s.split_whitespace();
     let op = match tokens.next().unwrap() {
         "*" => MUL,
@@ -55,7 +118,9 @@ fn parse_op(s: &str) -> Operation {
     };
     let rhs = match tokens.next().unwrap() {
         "old" => RHS::Old,
-        x if x.parse::<u64>().is_ok() => RHS::Literal(x.parse().unwrap()),
+        x if x.parse::<u32>().is_ok() => {
+            RHS::Literal(x.parse::<u32>().unwrap().to_modular(test_divisor))
+        }
         x => panic!("unknown right token {}", x),
     };
 
@@ -70,17 +135,28 @@ fn parse_test_outcome(s: &str) -> u32 {
 
 fn parse(input: &str) -> Vec<Monkey> {
     let mut monkeys = vec![];
+    let test_divisor = input
+        .lines()
+        .skip(3)
+        .step_by(7)
+        .map(|l| {
+            l.strip_prefix("  Test: divisible by ")
+                .unwrap()
+                .parse::<i32>()
+                .unwrap()
+        })
+        .product::<i32>() as u32;
 
     for mut chunk in input.lines().chunks(7).into_iter() {
         chunk.next().expect("no monkey"); // Monkey n
 
-        let items: Vec<u64> = chunk
+        let items: Vec<Modular> = chunk
             .next()
             .expect("no starting items")
             .strip_prefix("  Starting items: ")
             .expect("starting items in wrong format")
             .split(", ")
-            .map(|x| x.parse().unwrap())
+            .map(|x| x.parse::<u32>().unwrap().to_modular(test_divisor))
             .collect();
 
         let operation = parse_op(
@@ -89,9 +165,10 @@ fn parse(input: &str) -> Vec<Monkey> {
                 .expect("no operation")
                 .strip_prefix("  Operation: new = old ")
                 .expect("operation in wrong format"),
+            test_divisor,
         );
 
-        let test: u64 = chunk
+        let test: u32 = chunk
             .next()
             .expect("no test")
             .strip_prefix("  Test: divisible by ")
@@ -114,18 +191,20 @@ fn parse(input: &str) -> Vec<Monkey> {
     monkeys
 }
 
-pub fn part_one(input: &str) -> Option<u32> {
-    let monkeys = parse(input);
+fn play_game<W>(monkeys: Vec<Monkey>, rounds: usize, worry_update: W) -> Vec<u32>
+where
+    W: Fn(Modular) -> Modular,
+{
     let mut inspected = vec![0u32; monkeys.len()];
 
-    for _ in 0..20 {
+    for _ in 0..rounds {
         for i in 0..monkeys.len() {
             let monkey = &monkeys[i];
             inspected[i] += monkey.items.borrow().len() as u32;
 
             while let Some(item) = monkey.items.borrow_mut().pop() {
-                let worry_level = monkey.op.compute(item) / 3;
-                let next_monkey = if worry_level % monkey.test == 0 {
+                let worry_level = worry_update(monkey.op.compute(item));
+                let next_monkey = if worry_level.get_remainder() % monkey.test == 0 {
                     monkey.if_true
                 } else {
                     monkey.if_false
@@ -140,11 +219,26 @@ pub fn part_one(input: &str) -> Option<u32> {
     }
 
     inspected.sort();
-    Some(inspected[inspected.len() - 2] * inspected[inspected.len() - 1])
+    inspected.reverse();
+    inspected
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
-    None
+pub fn part_one(input: &str) -> Option<u32> {
+    let monkeys = parse(input);
+    let inspected = play_game(monkeys, 20, |x| {
+        // division is not in general defined in mod arithmetic. Just hack it
+        Modular {
+            remainder: x.remainder / 3,
+            divisor: x.divisor,
+        }
+    });
+    Some(inspected[0] * inspected[1])
+}
+
+pub fn part_two(input: &str) -> Option<u64> {
+    let monkeys = parse(input);
+    let inspected = play_game(monkeys, 10_000, |x| x);
+    Some(inspected[0] as u64 * inspected[1] as u64)
 }
 
 fn main() {
@@ -166,6 +260,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let input = advent_of_code::read_file("examples", 11);
-        assert_eq!(part_two(&input), None);
+        assert_eq!(part_two(&input), Some(2_713_310_158));
     }
 }
