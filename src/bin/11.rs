@@ -14,7 +14,7 @@
 // divisibility of the numbers that result with respect to the various tests used by the monkeys;
 // we don't care about the actual numbers themselves! In this case, the test divisors are all
 // prime, so their lowest common multiple is simply their product. Thus, for some item with worry
-// level A, its score is divisible by its test T if, and only if, A - kT is. If we choose k to be
+// level A, its score is divisible by its test T if, and only if, A - kT is. If we choose kT to be
 // the lowest common multiple of all monkey test values, k will always be divisible by the test.
 //
 // I went for this on a hunch to begin with, based on intuition, and came back to figure the theory
