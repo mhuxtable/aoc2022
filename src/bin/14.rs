@@ -1,3 +1,8 @@
+// This is a very inefficient (space-wise) solution. It models the entire Grid as a 1-dimension
+// vector and simulates the sand falling through this grid (updating only when sand comes to rest).
+// This imposes some challenges that constrain the solution for part 2, but it was a nice easy way
+// of visualising the problem. This really isn't a great approach today.
+
 use std::fmt::Display;
 
 use advent_of_code::helpers::{Grid, Point};
