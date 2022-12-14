@@ -186,29 +186,33 @@ mod packet_tests {
     }
 }
 
-fn parse(input: &str) -> Vec<(Packet, Packet)> {
-    let mut packets = vec![];
-
-    for (p1, p2) in input
+fn parse(input: &str) -> Vec<Packet> {
+    input
         .lines()
-        .step_by(3)
-        .zip(input.lines().skip(1).step_by(3))
-    {
-        packets.push((p1.into(), p2.into()));
-    }
-
-    packets
+        .filter_map(|l| {
+            if l.is_empty() {
+                None
+            } else {
+                Some(Packet::from(l))
+            }
+        })
+        .collect()
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
     let packets = parse(input);
+    let pairs = packets
+        .as_slice()
+        .chunks(2)
+        .map(|chunk| (&chunk[0], &chunk[1]))
+        .collect::<Vec<(&Packet, &Packet)>>();
 
-    for (p1, p2) in &packets {
+    for (p1, p2) in &pairs {
         println!("{} {} {:?}\n", p1, p2, p1 < p2);
     }
 
     Some(
-        packets
+        pairs
             .iter()
             .enumerate()
             .map(|(i, (p1, p2))| if p1 < p2 { i + 1 } else { 0 })
@@ -217,7 +221,27 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let mut packets = parse(input);
+    let divider_packets: Vec<Packet> = [2u32, 6]
+        .iter()
+        .map(|&x| Packet::List(vec![Packet::List(vec![Packet::Literal(x)])]))
+        .collect();
+
+    packets.extend(divider_packets.clone());
+    packets.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let decoder_key = divider_packets
+        .iter()
+        .map(|pkt| {
+            packets
+                .iter()
+                .enumerate()
+                .find_map(|(i, x)| if x == pkt { Some(i as u32 + 1) } else { None })
+                .unwrap()
+        })
+        .product();
+
+    Some(decoder_key)
 }
 
 fn main() {
@@ -239,6 +263,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let input = advent_of_code::read_file("examples", 13);
-        assert_eq!(part_two(&input), None);
+        assert_eq!(part_two(&input), Some(140));
     }
 }
