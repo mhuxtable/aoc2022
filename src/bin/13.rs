@@ -7,6 +7,18 @@ enum Packet {
     Literal(u32),
 }
 
+macro_rules! packet_literal {
+    ($x: expr) => {
+        Packet::Literal($x)
+    };
+}
+
+macro_rules! packet_list {
+    ($x: expr) => {
+        Packet::List(Vec::from($x).iter().map(|&x| packet_literal!(x)).collect())
+    };
+}
+
 impl Packet {
     pub fn push(&mut self, x: Packet) {
         match self {
@@ -127,7 +139,7 @@ impl From<&str> for Packet {
         for ch in s.chars() {
             // Reached a boundary, so tidy up any accrued digits
             if (ch == ',' || ch == ']') && cur_digit.is_some() {
-                let literal = Packet::Literal(cur_digit.unwrap());
+                let literal = packet_literal!(cur_digit.unwrap());
                 stack.last_mut().unwrap().push(literal);
                 cur_digit = None;
             }
@@ -157,24 +169,21 @@ mod packet_tests {
     #[test]
     fn test_packets() {
         let tests = vec![
-            ("[1]", Packet::List(vec![Packet::Literal(1)])),
-            (
-                "[1,2]",
-                Packet::List(vec![Packet::Literal(1), Packet::Literal(2)]),
-            ),
+            ("[1]", packet_list!([1])),
+            ("[1,2]", packet_list!([1, 2])),
             (
                 "[[[[3]]]]",
                 Packet::List(vec![Packet::List(vec![Packet::List(vec![Packet::List(
-                    vec![Packet::Literal(3)],
+                    vec![packet_literal!(3)],
                 )])])]),
             ),
             (
                 "[1,[2,[3]]]",
                 Packet::List(vec![
-                    Packet::Literal(1),
+                    packet_literal!(1),
                     Packet::List(vec![
-                        Packet::Literal(2),
-                        Packet::List(vec![Packet::Literal(3)]),
+                        packet_literal!(2),
+                        Packet::List(vec![packet_literal!(3)]),
                     ]),
                 ]),
             ),
@@ -224,7 +233,7 @@ pub fn part_two(input: &str) -> Option<u32> {
     let mut packets = parse(input);
     let divider_packets: Vec<Packet> = [2u32, 6]
         .iter()
-        .map(|&x| Packet::List(vec![Packet::List(vec![Packet::Literal(x)])]))
+        .map(|&x| Packet::List(vec![packet_list!([x])]))
         .collect();
 
     packets.extend(divider_packets.clone());
