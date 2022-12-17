@@ -1,9 +1,8 @@
 use std::fmt::Display;
-
 #[derive(Debug)]
 struct Point {
-    x: isize,
-    y: isize,
+    x: i64,
+    y: i64,
 }
 
 impl Display for Point {
@@ -18,11 +17,7 @@ struct Detection {
     beacon: Point,
 }
 
-trait FromCoord {
-    fn from_coord(_: &str) -> Point;
-}
-
-impl FromCoord for Point {
+impl Point {
     fn from_coord(input: &str) -> Point {
         let (x, y) = input.split_once(", ").unwrap();
 
@@ -31,15 +26,13 @@ impl FromCoord for Point {
             y: y.strip_prefix("y=").unwrap().parse().unwrap(),
         }
     }
-}
 
-impl Point {
-    fn manhattan(&self, other: &Point) -> usize {
+    fn manhattan(&self, other: &Point) -> u64 {
         self.x.abs_diff(other.x) + self.y.abs_diff(other.y)
     }
 
-    pub fn tuning_frequency(&self) -> isize {
-        self.x * 4_000_000 + self.y
+    pub fn tuning_frequency(&self) -> u64 {
+        (self.x as u64 * 4_000_000) + self.y as u64
     }
 }
 
@@ -58,43 +51,55 @@ fn parse(input: &str) -> Vec<Detection> {
     detections
 }
 
-pub fn part_one(input: &str) -> Option<u32> {
-    let detections = parse(input);
-
-    const SEARCH_Y: isize = if cfg!(test) { 10 } else { 2_000_000 };
-
-    let relevant_sensors: Vec<(&Detection, usize)> = detections
+fn with_distances(detections: &Vec<Detection>) -> Vec<(&Detection, u64)> {
+    detections
         .iter()
         .zip(detections.iter().map(|d| d.sensor.manhattan(&d.beacon)))
+        .collect()
+}
+
+fn detections_for_row<'a>(detections: &Vec<(&'a Detection, u64)>, y: i64) -> Vec<(i64, i64)> {
+    let relevant_sensors: Vec<(&Detection, u64)> = detections
+        .iter()
         .filter_map(|(detection, manhattan)| {
-            if detection.sensor.y - manhattan as isize <= SEARCH_Y
-                && detection.sensor.y + manhattan as isize >= SEARCH_Y
+            if detection.sensor.y - *manhattan as i64 <= y
+                && detection.sensor.y + *manhattan as i64 >= y
             {
-                Some((detection, manhattan))
+                Some((*detection, *manhattan))
             } else {
                 None
             }
         })
         .collect();
 
-    let mut regions: Vec<(isize, isize)> = vec![];
+    let mut regions = vec![];
 
     for (detection, distance) in relevant_sensors {
-        let dy = detection.sensor.y.abs_diff(SEARCH_Y) as isize;
+        let dy = detection.sensor.y.abs_diff(y);
         let (x1, x2) = (
-            detection.sensor.x - distance as isize + dy,
-            detection.sensor.x + distance as isize - dy,
+            detection.sensor.x - distance as i64 + dy as i64,
+            detection.sensor.x + distance as i64 - dy as i64,
         );
         regions.push((x1, x2));
 
-        println!(
-            "sensor: {}; beacon: {}; d={}, dy={}, xs=({},{})",
-            detection.sensor, detection.beacon, distance, dy, x1, x2,
-        );
+        // println!(
+        //     "sensor: {}; beacon: {}; d={}, dy={}, xs=({},{})",
+        //     detection.sensor, detection.beacon, distance, dy, x1, x2,
+        // );
     }
     regions.sort_by_key(|r| r.0);
 
-    let mut beacons_in_row: Vec<isize> = detections
+    regions
+}
+
+pub fn part_one(input: &str) -> Option<u32> {
+    let detections = parse(input);
+    let with_distances = with_distances(&detections);
+
+    const SEARCH_Y: i64 = if cfg!(test) { 10 } else { 2_000_000 };
+    let regions = detections_for_row(&with_distances, SEARCH_Y);
+
+    let mut beacons_in_row: Vec<i64> = detections
         .iter()
         .filter_map(|d| {
             if d.beacon.y == SEARCH_Y {
@@ -110,7 +115,7 @@ pub fn part_one(input: &str) -> Option<u32> {
     let mut monitored = 0;
 
     {
-        let mut cur_x = isize::MIN;
+        let mut cur_x = i64::MIN;
 
         for (left, right) in regions.iter() {
             let start = if cur_x > *right {
@@ -141,8 +146,35 @@ pub fn part_one(input: &str) -> Option<u32> {
     Some(monitored)
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
-    None
+pub fn part_two(input: &str) -> Option<u64> {
+    let detections = parse(input);
+    let with_distances = with_distances(&detections);
+
+    const SEARCH_XY: i64 = if cfg!(test) { 20 } else { 4_000_000 };
+    let mut point = None;
+
+    'rows: for row in 0..=SEARCH_XY {
+        let ranges = detections_for_row(&with_distances, row);
+
+        let mut cur = 0;
+
+        for (low, high) in ranges {
+            if low < cur && high < cur {
+                continue;
+            } else if low > cur {
+                // Found a location that is not monitored
+                println!("The point is ({},{})", cur + 1, row);
+                dbg!(low, high, cur, row);
+
+                point = Some(Point { x: cur + 1, y: row });
+                break 'rows;
+            } else {
+                cur = high;
+            }
+        }
+    }
+
+    Some(point.unwrap().tuning_frequency() as u64)
 }
 
 fn main() {
@@ -164,6 +196,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let input = advent_of_code::read_file("examples", 15);
-        assert_eq!(part_two(&input), None);
+        assert_eq!(part_two(&input), Some(56_000_011));
     }
 }
