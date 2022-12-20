@@ -1,7 +1,11 @@
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::collections::{HashMap, HashSet};
+use std::{
+    cell::RefCell,
+    collections::{hash_map::DefaultHasher, HashMap, HashSet},
+    hash::{Hash, Hasher},
+};
 
 fn parse(input: &str) -> HashMap<String, (u32, Vec<String>)> {
     let mut valves = HashMap::new();
@@ -43,6 +47,16 @@ fn floyd(graph: &HashMap<String, (u32, Vec<String>)>) -> HashMap<String, HashMap
         }
     }
 
+    if keys.contains(&&"Q".to_string()) {
+        // The cost of getting from Q to AA is nothing as it's a fake node that restarts us back at
+        // AA, and changes player.
+        dist[id_of(&"Q".to_string())][id_of(&"AA".to_string())] = 0;
+
+        for x in 0..keys.len() {
+            dist[id_of(keys[x])][id_of(&"Q".to_string())] = 0;
+        }
+    }
+
     for k in 0..keys.len() {
         for i in 0..keys.len() {
             for j in 0..keys.len() {
@@ -57,7 +71,7 @@ fn floyd(graph: &HashMap<String, (u32, Vec<String>)>) -> HashMap<String, HashMap
     let mut costs: HashMap<String, HashMap<String, u32>> = HashMap::new();
 
     for (i, &key) in keys.iter().enumerate() {
-        if key != "AA" && graph[key].0 == 0 {
+        if key != "AA" && key != "Q" && graph[key].0 == 0 {
             // We don't care about connections to rooms with flow 0; they are useless
             continue;
         }
@@ -65,7 +79,7 @@ fn floyd(graph: &HashMap<String, (u32, Vec<String>)>) -> HashMap<String, HashMap
         let entry = costs.entry(key.clone()).or_default();
 
         for (j, &connection) in keys.iter().enumerate() {
-            if graph[connection].0 == 0 {
+            if graph[connection].0 == 0 && connection != "Q" {
                 // don't care about connections to rooms with flow 0
                 continue;
             } else if connection == key {
@@ -106,86 +120,131 @@ fn graph_with_actuation_nodes(
 
 #[derive(Clone)]
 struct State<'a> {
-    current_nodes: Vec<&'a str>,
-    mins_remaining: Vec<usize>,
+    current_node: &'a str,
+    mins_remaining: usize,
     open_valves: HashSet<String>,
     flow: u32,
+    can_take_q: bool,
+    steps: Vec<(String, u32, usize)>,
 }
 
-fn brute_force(
-    mut state: &mut State,
-    visits_per_round: usize,
+fn hash_valves(s: &HashSet<String>) -> u64 {
+    let mut hash = DefaultHasher::new();
+
+    0xFF.hash(&mut hash);
+
+    for valve in s.iter().sorted() {
+        valve.hash(&mut hash);
+    }
+
+    0xFF.hash(&mut hash);
+
+    hash.finish()
+}
+
+fn brute_force<'a>(
+    state: &mut State,
     flow_rates: &HashMap<String, u32>,
     costs: &HashMap<String, HashMap<String, u32>>,
+    best_paths: &RefCell<&'a mut HashMap<(String, usize, u64), (u32, Vec<String>)>>,
+    best_q_paths: &RefCell<&'a mut HashMap<(String, usize, u64), (u32, Vec<String>)>>,
 ) -> (u32, Vec<String>) {
-    for (i, current_node) in state.current_nodes.iter().enumerate() {
-        if current_node.ends_with("+") && !state.open_valves.contains(&current_node.to_string()) {
-            state.open_valves.insert(current_node.to_string());
-            state.flow +=
-                state.mins_remaining[i] as u32 * flow_rates[current_node.trim_end_matches('+')];
+    // Vec<(String, u32, usize)>) {
+    let memo_key = &(
+        state.current_node.to_string(),
+        state.mins_remaining,
+        hash_valves(&state.open_valves),
+    );
+
+    let cache = if state.can_take_q {
+        best_paths
+    } else {
+        best_q_paths
+    };
+
+    {
+        let cached = cache.borrow();
+        let cached = cached.get(memo_key);
+
+        if cached.is_some() {
+            let (flow, valves) = cached.unwrap();
+            // println!(
+            //     "hit cache {} {} {:?} = {} {:?}",
+            //     state.current_node, state.mins_remaining, &state.open_valves, flow, &valves
+            // );
+
+            let mut open_valves = state.open_valves.clone();
+
+            for valve in valves {
+                open_valves.insert(valve.to_string());
+            }
+
+            return (
+                state.flow + flow,
+                state
+                    .open_valves
+                    .iter()
+                    .map(|x| x.clone())
+                    .collect::<Vec<String>>(),
+            );
         }
     }
 
-    assert!(visits_per_round >= 1 && visits_per_round <= 2);
-    assert!(state.current_nodes.len() == visits_per_round);
+    let mut new_flow = 0;
 
-    let filter_next_nodes = |i: usize, (neighbour, cost): (&String, &u32)| {
-        flow_rates[neighbour.trim_end_matches('+')] > 0
-            && state.mins_remaining[i]
-                .checked_sub(*cost as usize)
-                .is_some()
+    if state.current_node.ends_with("+")
+        && !state.open_valves.contains(&state.current_node.to_string())
+    {
+        state.open_valves.insert(state.current_node.to_string());
+        new_flow +=
+            state.mins_remaining as u32 * flow_rates[state.current_node.trim_end_matches('+')];
+    }
+
+    state.steps.push((
+        state.current_node.to_string(),
+        state.flow,
+        state.mins_remaining,
+    ));
+
+    let filter_next_nodes = |(neighbour, cost): (&String, &u32)| {
+        (flow_rates[neighbour.trim_end_matches('+')] > 0)
+            && state.mins_remaining.checked_sub(*cost as usize).is_some()
             && !state.open_valves.contains(neighbour)
     };
 
-    let next_node_candidates: Vec<Vec<(&String, &u32)>> = state
-        .current_nodes
+    let mut next_node_candidates: Vec<(String, &u32)> = costs[state.current_node]
         .iter()
-        .enumerate()
-        .map(|(i, current_node)| {
-            costs[*current_node]
-                .iter()
-                .filter(|(neighbour, cost)| filter_next_nodes(i, (&neighbour, cost)))
-                .collect()
-        })
+        .filter(|(neighbour, cost)| filter_next_nodes((&neighbour, cost)))
+        .map(|(neighbour, cost)| (neighbour.clone(), cost))
         .collect();
 
-    let mut next_choices =
-        Vec::with_capacity(next_node_candidates.iter().map(|x| x.len()).product());
-
-    if visits_per_round == 1 {
-        next_choices.extend(
-            next_node_candidates[0]
-                .iter()
-                .map(|&x| vec![x])
-                .collect::<Vec<Vec<(&String, &u32)>>>(),
-        );
-    } else {
-        for &p1 in &next_node_candidates[0] {
-            for &p2 in &next_node_candidates[1] {
-                next_choices.push(vec![p1, p2]);
-            }
-        }
+    // introduce a node "Q" that resets the timer
+    // https://www.reddit.com/r/adventofcode/comments/znr2eh/comment/j0jlrrs/?utm_source=reddit&utm_medium=web2x&context=3
+    if state.can_take_q {
+        next_node_candidates.push(("Q".to_string(), &0));
     }
 
-    let result = next_choices
+    let result = next_node_candidates
         .iter()
-        .map(|next_nodes| {
-            let (next_nodes, mins): (Vec<&String>, Vec<&u32>) =
-                next_nodes.into_iter().map(|item| *item).unzip();
-
+        .map(|(next_node, &cost)| {
             let mut state = State {
-                current_nodes: next_nodes.iter().map(|s| s.as_str()).collect(),
-                mins_remaining: state
-                    .mins_remaining
-                    .iter()
-                    .enumerate()
-                    .map(|(i, rem)| rem - *mins[i] as usize)
-                    .collect(),
+                current_node: if *next_node == "Q" {
+                    "AA"
+                } else {
+                    next_node.as_str()
+                },
+                mins_remaining: if *next_node == "Q" {
+                    26
+                } else {
+                    state.mins_remaining - cost as usize
+                },
                 open_valves: state.open_valves.clone(),
-                flow: state.flow,
+                flow: state.flow + new_flow,
+                can_take_q: state.can_take_q && *next_node != "Q",
+                steps: state.steps.clone(),
             };
 
-            let result = brute_force(&mut state, visits_per_round, flow_rates, costs);
+            let result = brute_force(&mut state, flow_rates, costs, best_paths, best_q_paths);
 
             result
         })
@@ -193,7 +252,7 @@ fn brute_force(
         .last();
 
     let default = (
-        state.flow,
+        state.flow + new_flow,
         state
             .open_valves
             .iter()
@@ -201,7 +260,12 @@ fn brute_force(
             .collect::<Vec<String>>(),
     );
 
-    result.unwrap_or(default)
+    let result = result.unwrap_or(default);
+    cache
+        .borrow_mut()
+        .insert(memo_key.clone(), (result.0 - state.flow, result.1.clone()));
+
+    result
 }
 
 pub fn part_one(input: &str) -> Option<u32> {
@@ -218,20 +282,33 @@ pub fn part_one(input: &str) -> Option<u32> {
         });
 
     let mut state = State {
-        current_nodes: vec!["AA"],
-        mins_remaining: vec![30],
+        current_node: "AA",
+        mins_remaining: 30,
         open_valves: HashSet::new(),
         flow: 0,
+        can_take_q: false,
+        steps: vec![],
     };
 
-    let (flow, valves) = brute_force(&mut state, 1, &flow_rates, &costs);
+    let mut memo = HashMap::new();
+    let mut memoq = HashMap::new();
+
+    let (flow, valves) = brute_force(
+        &mut state,
+        &flow_rates,
+        &costs,
+        &RefCell::new(&mut memo),
+        &RefCell::new(&mut memoq),
+    );
     dbg!(&valves);
+    // dbg!(&steps);
 
     Some(flow)
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
     let valves = parse(input);
+
     let graph_with_actuation_nodes = graph_with_actuation_nodes(&valves);
 
     let costs = floyd(&graph_with_actuation_nodes);
@@ -243,15 +320,28 @@ pub fn part_two(input: &str) -> Option<u32> {
             acc
         });
 
+    dbg!(&costs);
+
     let mut state = State {
-        current_nodes: vec!["AA", "AA"],
-        mins_remaining: vec![26, 26],
+        current_node: "AA",
+        mins_remaining: 26,
         open_valves: HashSet::new(),
         flow: 0,
+        can_take_q: true,
+        steps: vec![],
     };
 
-    let (flow, valves) = brute_force(&mut state, 2, &flow_rates, &costs);
-    dbg!(&valves);
+    let mut memo = HashMap::new();
+    let mut memoq = HashMap::new();
+
+    let (flow, _valves) = brute_force(
+        &mut state,
+        &flow_rates,
+        &costs,
+        &RefCell::new(&mut memo),
+        &RefCell::new(&mut memoq),
+    );
+    // dbg!(&steps);
 
     Some(flow)
 }
