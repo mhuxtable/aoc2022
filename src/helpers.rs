@@ -3,7 +3,7 @@
  * Example import from this file: `use advent_of_code::helpers::example_fn;`.
  */
 
-use std::slice::Iter;
+use std::{fmt::Display, slice::Iter};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Point {
@@ -67,5 +67,24 @@ where
 
     pub fn height(&self) -> usize {
         self.values.len() / self.width
+    }
+}
+
+impl<T> Display for Grid<T>
+where
+    T: Clone + Default + Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::new();
+
+        for row in 0..self.height() {
+            for col in 0..self.width() {
+                s.push_str(format!("{}", self.point(&Point { x: col, y: row })).as_str());
+            }
+
+            s.push('\n');
+        }
+
+        write!(f, "{}", s)
     }
 }
