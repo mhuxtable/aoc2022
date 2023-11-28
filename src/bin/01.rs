@@ -25,7 +25,8 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    let elves = parse(input).unwrap();
+    let mut elves = parse(input).unwrap();
+    elves.sort_unstable();
 
     Some(elves[elves.len() - 3..elves.len()].iter().sum())
 }
